@@ -189,13 +189,15 @@ def load_order_items():
         st.error(f"Memeriksa path: {ORDER_ITEMS_PATH}")
         st.stop()
 
-def preprocess_payments_data(payments_df, orders_dataset):
+def preprocess_payments_data(payments_df, orders_dataset, start_date=None, end_date=None):
     """
-    Melakukan preprocessing data pembayaran dan pesanan.
+    Melakukan preprocessing data pembayaran dan pesanan dengan filter tanggal opsional.
     
     Parameters:
         payments_df (pd.DataFrame): Data pembayaran
         orders_dataset (pd.DataFrame): Data pesanan
+        start_date (str/datetime): Tanggal mulai (opsional)
+        end_date (str/datetime): Tanggal akhir (opsional)
         
     Returns:
         pd.DataFrame: Data yang sudah diproses dengan kolom tambahan
@@ -208,16 +210,17 @@ def preprocess_payments_data(payments_df, orders_dataset):
     )
     processed_df['order_purchase_timestamp'] = pd.to_datetime(processed_df['order_purchase_timestamp'])
 
-    latest_date = processed_df['order_purchase_timestamp'].max()
-    start_date = latest_date - pd.DateOffset(months=12)
-    filtered_df = processed_df[
-        (processed_df['order_purchase_timestamp'] >= start_date) &
-        (processed_df['order_purchase_timestamp'] <= latest_date)
-    ].copy()
+    if start_date is not None:
+        start_date = pd.to_datetime(start_date)
+        processed_df = processed_df[processed_df['order_purchase_timestamp'] >= start_date]
     
-    filtered_df['month_year'] = filtered_df['order_purchase_timestamp'].dt.to_period('M')
+    if end_date is not None:
+        end_date = pd.to_datetime(end_date)
+        processed_df = processed_df[processed_df['order_purchase_timestamp'] <= end_date]
     
-    return filtered_df
+    processed_df['month_year'] = processed_df['order_purchase_timestamp'].dt.to_period('M')
+    
+    return processed_df
 
 def calculate_monthly_stats(filtered_df):
     """
@@ -318,31 +321,45 @@ def create_payment_trend_chart(monthly_stats):
 
 def show_key_insights():
     """
-    Menampilkan kartu insight utama dalam layout kolom.
+    Menampilkan kartu insight utama dalam layout 3 kolom.
     """
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown(f"""
-        <div style="background-color:{BLUE_PALETTE[4]};padding:15px;border-radius:10px;margin-bottom:20px;">
-            <h4 style="color:{BLUE_PALETTE[0]};margin-top:0;">📈 Tren Pembayaran</h4>
-            <ul style="color:#333;">
-                <li>Total pembayaran stabil meski jumlah transaksi bervariasi, menandakan rata-rata nilai transaksi konsisten.</li>
-                <li>Kenaikan kecil pada pembayaran April–Juli 2018 mengindikasikan peningkatan rata-rata nilai transaksi.</li>
-            </ul>
-        </div>
+            <div style="background-color:{BLUE_PALETTE[4]};padding:15px;border-radius:10px;margin-bottom:20px;">
+                <h4 style="color:{BLUE_PALETTE[0]};margin-top:0;">📈 Tren Pembayaran</h4>
+                <ul style="color:#333;">
+                    <li>Meningkat konsisten dari Okt 2016 hingga puncak pada Nov 2017.</li>
+                    <li>Fluktuatif namun tinggi hingga Ags 2018.</li>
+                    <li>Turun tajam pada Sep–Okt 2018, kemungkinan karena data tidak lengkap.</li>
+                </ul>
+            </div>
         """, unsafe_allow_html=True)
 
     with col2:
         st.markdown(f"""
-        <div style="background-color:{YELLOW_PALETTE[4]};padding:15px;border-radius:10px;margin-bottom:20px;">
-            <h4 style="color:{YELLOW_PALETTE[0]};margin-top:0;">📊 Volume Transaksi</h4>
-            <ul style="color:#333;">
-                <li>Lonjakan transaksi dari Oktober ke November 2017, mengindikasikan kampanye atau promosi yang efektif.</li>
-                <li>Stabil tinggi Desember 2017–Agustus 2018, dengan puncak transaksi pada Maret–Mei 2018.</li>
-                <li>Penurunan drastis pada September–Oktober 2018 kemungkinan disebabkan oleh data yang tidak lengkap.</li>
-            </ul>
+            <div style="background-color:{YELLOW_PALETTE[4]};padding:15px;border-radius:10px;margin-bottom:20px;">
+                <h4 style="color:{YELLOW_PALETTE[0]};margin-top:0;">📊 Volume Transaksi</h4>
+                <ul style="color:#333;">
+                    <li>Naik signifikan sejak Jan 2017.</li>
+                    <li>Stabil tinggi dari Ags 2017–Ags 2018.</li>
+                    <li>Puncak transaksi: Des 2017 & Mar 2018.</li>
+                    <li>Turun tajam pada Sep–Okt 2018.</li>
+                </ul>
         </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f"""
+            <div style="background-color:#e0e0e0;padding:15px;border-radius:10px;margin-bottom:20px;">
+                <h4 style="color:#444;margin-top:0;">🔗 Korelasi</h4>
+                <ul style="color:#333;">
+                    <li>Total pembayaran umumnya mengikuti tren jumlah transaksi.</li>
+                    <li>Rata-rata nilai transaksi relatif stabil.</li>
+                    <li>Lonjakan pembayaran Nov 2017 tak disertai lonjakan transaksi, indikasi transaksi bernilai tinggi.</li>
+                </ul>
+            </div>
         """, unsafe_allow_html=True)
 
 def show_price_shipping_analysis(order_items_dataset):
@@ -604,10 +621,9 @@ def show_shipping_ratio_analysis(order_items_dataset):
     """, unsafe_allow_html=True)
 
 def app():
-    
     # Menerapkan tema kustom
     local_css()
-    
+
     # Header utama dengan gradient
     st.markdown("""
     <div style='background: linear-gradient(90deg, #1a5fb4, #3584e4); padding: 15px; border-radius: 10px; margin-bottom: 25px;'>
@@ -619,20 +635,61 @@ def app():
     payments_df, orders_dataset = load_payments_data()
     order_items_dataset = load_order_items()
 
-    # Preprocessing data pembayaran
-    filtered_df = preprocess_payments_data(payments_df, orders_dataset)
-    
+    # Date range selector - dipindahkan ke bagian utama
+    st.subheader("📅 Filter Rentang Tanggal")
+    min_date = pd.to_datetime(orders_dataset['order_purchase_timestamp']).min().date()
+    max_date = pd.to_datetime(orders_dataset['order_purchase_timestamp']).max().date()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input(
+            "Tanggal Mulai",
+            value=min_date,
+            min_value=min_date,
+            max_value=max_date,
+            key="start_date"
+        )
+    with col2:
+        end_date = st.date_input(
+            "Tanggal Akhir",
+            value=max_date,
+            min_value=min_date,
+            max_value=max_date,
+            key="end_date"
+        )
+
+    # Validate date range
+    if start_date > end_date:
+        st.error("Error: Tanggal akhir harus setelah tanggal mulai.")
+        st.stop()
+
+    # Preprocessing data pembayaran dengan filter tanggal
+    filtered_df = preprocess_payments_data(
+        payments_df, 
+        orders_dataset,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    if filtered_df.empty:
+        st.warning("⚠️ Tidak ada data transaksi untuk rentang tanggal yang dipilih.")
+        st.stop()
+
     # Hitung statistik bulanan
     monthly_stats = calculate_monthly_stats(filtered_df)
 
-    # Tampilkan tabel statistik
-    st.subheader('📈 Summary Statistik per Bulan')
-    st.markdown("""
-    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;margin-bottom:20px;">
-    <h4 style="color:#1f77b4;">Statistik Pembayaran 12 Bulan Terakhir</h4>
+    # Tampilkan periode yang dipilih
+    st.markdown(f"""
+    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;margin-bottom:20px;border-left:4px solid {BLUE_PALETTE[0]};">
+        <h4 style="color:{BLUE_PALETTE[0]};margin-top:0;">📅 Periode yang Dipilih</h4>
+        <p style="margin-bottom:0;">{start_date.strftime('%d %B %Y')} - {end_date.strftime('%d %B %Y')} 
+        ({len(monthly_stats)} bulan)</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # Tampilkan tabel statistik
+    st.subheader('📈 Summary Statistik per Bulan')
+
     st.dataframe(
         monthly_stats.style.format({
             'Jumlah Transaksi': '{:,}',
@@ -653,7 +710,7 @@ def app():
     # Tampilkan insight utama
     st.subheader('🔍 Insight Utama')
     show_key_insights()
-    
+
     # Tampilkan analisis harga dan biaya pengiriman
     show_price_shipping_analysis(order_items_dataset)
 
